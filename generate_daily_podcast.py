@@ -130,7 +130,11 @@ script = generate_podcast_script(
 )
 print("Generating AI Highlights...")
 
-highlights = generate_highlights(script)
+try:
+    highlights = generate_highlights(script)
+except Exception as e:
+    print(f"Highlights generation failed: {e}")
+    highlights = []
 
 with open("../podcasts/highlights.json", "w", encoding="utf-8") as f:
     json.dump(
