@@ -1,6 +1,5 @@
-import schedule
-import time
-from datetime import datetime
+import sys
+from datetime import datetime, timezone
 
 from firebase_service import db
 from generate_daily_podcast import generate_podcast_for_user
@@ -10,7 +9,8 @@ def generate_for_all_users():
 
     print()
     print("=" * 60)
-    print("STARTING AUTOMATIC DAILY GENERATION")
+    print("WAVELY AUTOMATIC DAILY GENERATION")
+    print("Started at:", datetime.now(timezone.utc))
     print("=" * 60)
 
     users = db.collection("users").stream()
@@ -25,46 +25,68 @@ def generate_for_all_users():
         user_count += 1
 
         print()
-        print("Generating podcast for user:", uid)
+        print("-" * 60)
+        print("GENERATING PODCAST")
+        print("USER:", uid)
+        print("-" * 60)
 
         try:
 
-            generate_podcast_for_user(uid)
+            result = generate_podcast_for_user(uid)
 
             success_count += 1
+
+            print(
+                "SUCCESS:",
+                uid,
+            )
 
         except Exception as e:
 
             failed_count += 1
 
             print(
-                "Generation failed for user:",
+                "FAILED:",
                 uid,
-                "Error:",
-                e,
+            )
+
+            print(
+                "ERROR:",
+                str(e),
             )
 
     print()
     print("=" * 60)
     print("DAILY GENERATION FINISHED")
-    print("Users:", user_count)
+    print("Total users:", user_count)
     print("Successful:", success_count)
     print("Failed:", failed_count)
+    print("Finished at:", datetime.now(timezone.utc))
     print("=" * 60)
 
-
-# Generate every day at 5:30 AM
-schedule.every().day.at("05:30").do(
-    generate_for_all_users
-)
-
-
-print("Wavely Scheduler Started")
-print("Waiting for automatic generation...")
+    return {
+        "total_users": user_count,
+        "successful": success_count,
+        "failed": failed_count,
+    }
 
 
-while True:
+if __name__ == "__main__":
 
-    schedule.run_pending()
+    try:
 
-    time.sleep(30)
+        result = generate_for_all_users()
+
+        # Exit successfully only if all users succeeded
+        if result["failed"] == 0:
+            sys.exit(0)
+
+        sys.exit(1)
+
+    except Exception as e:
+
+        print()
+        print("SCHEDULER CRASHED")
+        print("ERROR:", str(e))
+
+        sys.exit(1)

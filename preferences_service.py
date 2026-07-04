@@ -1,4 +1,6 @@
 import json
+from datetime import datetime, timezone
+
 from firebase_service import db
 
 
@@ -12,7 +14,26 @@ DEFAULT_PREFERENCES = {
 }
 
 
+def ensure_user_document(uid):
+
+    user_ref = (
+        db.collection("users")
+        .document(uid)
+    )
+
+    user_ref.set(
+        {
+            "uid": uid,
+            "updated_at": datetime.now(timezone.utc),
+        },
+        merge=True,
+    )
+
+
 def get_user_preferences(uid):
+
+    # Ensure scheduler can discover this user
+    ensure_user_document(uid)
 
     doc_ref = (
         db.collection("users")
@@ -24,15 +45,24 @@ def get_user_preferences(uid):
     doc = doc_ref.get()
 
     if not doc.exists:
-        print(f"No preferences found for {uid}. Creating defaults.")
 
-        doc_ref.set(DEFAULT_PREFERENCES)
+        print(
+            f"No preferences found for {uid}. "
+            "Creating defaults."
+        )
+
+        doc_ref.set(
+            DEFAULT_PREFERENCES.copy()
+        )
 
         return DEFAULT_PREFERENCES.copy()
 
     preferences = doc.to_dict()
 
-    print("Firestore Preferences:", preferences)
+    print(
+        "Firestore Preferences:",
+        preferences,
+    )
 
     return preferences
 
@@ -47,6 +77,9 @@ def update_user_preferences(
     duration,
 ):
 
+    # Ensure scheduler can discover this user
+    ensure_user_document(uid)
+
     doc_ref = (
         db.collection("users")
         .document(uid)
@@ -55,8 +88,10 @@ def update_user_preferences(
     )
 
     if isinstance(categories, str):
+
         try:
             categories = json.loads(categories)
+
         except Exception:
             categories = []
 
@@ -67,10 +102,16 @@ def update_user_preferences(
         "voice": voice,
         "categories": categories,
         "duration": duration,
+        "updated_at": datetime.now(timezone.utc),
     }
 
-    doc_ref.set(data, merge=True)
+    doc_ref.set(
+        data,
+        merge=True,
+    )
 
-    print(f"Preferences updated for user: {uid}")
+    print(
+        f"Preferences updated for user: {uid}"
+    )
 
     return data
