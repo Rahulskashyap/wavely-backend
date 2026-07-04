@@ -8,17 +8,22 @@ import subprocess
 import json
 import sys
 from weather_service import get_weather
+import os
 
 from preferences_service import (
     get_user_preferences,
     update_user_preferences
 )
 
+PODCAST_DIR = "podcasts"
+
+os.makedirs(PODCAST_DIR, exist_ok=True)
+
 app = FastAPI()
 
 app.mount(
     "/podcasts",
-    StaticFiles(directory="../podcasts"),
+    StaticFiles(directory=PODCAST_DIR),
     name="podcasts"
 )
 
@@ -118,7 +123,11 @@ def weather(city: str = "Bengaluru"):
 @app.get("/api/highlights")
 def get_highlights():
     try:
-        with open("../podcasts/highlights.json", "r", encoding="utf-8") as f:
+        with open(
+    os.path.join(PODCAST_DIR, "highlights.json"),
+    "r",
+    encoding="utf-8"
+) as f:
             return json.load(f)
 
     except Exception as e:
@@ -132,7 +141,10 @@ def transcript(date: str):
 
     try:
         with open(
-            f"../podcasts/{date}.txt",
+           os.path.join(
+    PODCAST_DIR,
+    f"{date}.txt"
+),
             "r",
             encoding="utf-8"
         ) as f:
