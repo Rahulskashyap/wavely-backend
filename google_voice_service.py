@@ -1,12 +1,19 @@
 
-from google.cloud import texttospeech
+import json
 import os
+
 from dotenv import load_dotenv
+from google.cloud import texttospeech
+from google.oauth2 import service_account
 
 load_dotenv()
 
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.getenv(
-    "GOOGLE_APPLICATION_CREDENTIALS"
+credentials_info = json.loads(
+    os.environ["GOOGLE_SERVICE_ACCOUNT"]
+)
+
+credentials = service_account.Credentials.from_service_account_info(
+    credentials_info
 )
 
 LANGUAGE_VOICES = {
@@ -59,7 +66,9 @@ def split_text(text, max_chars=1000):
 
 def generate_google_audio(text, language, voice, output_file):
 
-    client = texttospeech.TextToSpeechClient()
+    client = texttospeech.TextToSpeechClient(
+    credentials=credentials
+)
 
     voice_map = LANGUAGE_VOICES.get(language)
 
