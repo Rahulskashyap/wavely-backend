@@ -9,6 +9,7 @@ import json
 import sys
 from weather_service import get_weather
 import os
+import database
 
 from preferences_service import (
     get_user_preferences,
