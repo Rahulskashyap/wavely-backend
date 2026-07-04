@@ -1,7 +1,6 @@
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
-from language_service import get_language_prompt
 
 load_dotenv()
 
@@ -11,8 +10,27 @@ genai.configure(
 
 model = genai.GenerativeModel("gemini-2.5-flash")
 
-def generate_podcast_script(news_text, podcast_length):
-    language_instruction = get_language_prompt()
+def generate_podcast_script(
+    news_text,
+    podcast_length,
+    language
+):
+    language_instruction = f"""
+The user selected the language: {language}.
+
+MANDATORY LANGUAGE RULES:
+
+- Generate the ENTIRE podcast in {language}.
+- The greeting must be in {language}.
+- Headlines must be in {language}.
+- News explanations must be in {language}.
+- Transitions must be in {language}.
+- The closing must be in {language}.
+- Do not switch to English unless an unavoidable proper noun, company name, product name, or technical term requires it.
+- Translate and naturally explain the supplied news in {language}.
+- Use fluent, natural spoken broadcast language.
+- The output must sound like a professional Indian television and radio news presenter speaking in {language}.
+"""
 
     prompt = f"""
 You are a professional television news anchor and morning radio presenter.
@@ -39,19 +57,36 @@ Never invent news.
 
 {language_instruction}
 
+LANGUAGE ENFORCEMENT:
+
+The selected output language is {language}.
+
+This is mandatory.
+
+Even if the supplied news articles are written in English, translate, summarize, and present them naturally in {language}.
+
+Do not respond in English when {language} is not English.
+
+Use English only for proper nouns or technical terms when translation would sound unnatural.
+
+Before returning the final script, verify that the spoken content is consistently written in {language}.
+
 Create a highly engaging daily news podcast.
 Generate a comprehensive podcast of approximately {podcast_length} minutes.
 
 PODCAST LENGTH RULES:
 
-* If podcast_length is 10:
-  Generate at least 1200 words.
+TARGET LENGTH:
 
-* If podcast_length is 20:
-  Generate at least 2500 words.
+The requested podcast duration is approximately {podcast_length} minutes.
 
-* If podcast_length is 40:
-  Generate at least 4500 words.
+Generate enough spoken content for approximately {podcast_length} minutes of natural news presentation.
+
+Estimate the target length dynamically based on the requested duration.
+
+Prioritize complete, engaging coverage over artificially repeating stories.
+
+Never repeat information simply to reach the requested duration.
 
 * Do not shorten the podcast.
 

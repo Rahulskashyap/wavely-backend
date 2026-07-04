@@ -1,20 +1,44 @@
 
-import json
 import os
-
-from dotenv import load_dotenv
+import json
 from google.cloud import texttospeech
 from google.oauth2 import service_account
+from dotenv import load_dotenv
 
 load_dotenv()
 
-credentials_info = json.loads(
-    os.environ["GOOGLE_SERVICE_ACCOUNT"]
-)
 
-credentials = service_account.Credentials.from_service_account_info(
-    credentials_info
-)
+def get_google_tts_client():
+
+    credentials_json = os.getenv("GOOGLE_SERVICE_ACCOUNT")
+
+    # Render / production
+    if credentials_json:
+        credentials_dict = json.loads(credentials_json)
+
+        credentials = service_account.Credentials.from_service_account_info(
+            credentials_dict
+        )
+
+        return texttospeech.TextToSpeechClient(
+            credentials=credentials
+        )
+
+    # Local development: use GOOGLE_APPLICATION_CREDENTIALS
+    local_credentials_path = os.getenv(
+        "GOOGLE_APPLICATION_CREDENTIALS"
+    )
+
+    if local_credentials_path:
+        return texttospeech.TextToSpeechClient.from_service_account_file(
+            local_credentials_path
+        )
+
+    raise RuntimeError(
+        "Google TTS credentials not found. "
+        "Set GOOGLE_SERVICE_ACCOUNT on Render or "
+        "GOOGLE_APPLICATION_CREDENTIALS locally."
+    )
 
 LANGUAGE_VOICES = {
     "English": {
@@ -66,9 +90,8 @@ def split_text(text, max_chars=1000):
 
 def generate_google_audio(text, language, voice, output_file):
 
-    client = texttospeech.TextToSpeechClient(
-    credentials=credentials
-)
+    client = get_google_tts_client()
+
 
     voice_map = LANGUAGE_VOICES.get(language)
 

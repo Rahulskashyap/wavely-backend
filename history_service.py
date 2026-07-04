@@ -1,51 +1,93 @@
-import os
+from firebase_service import db
+from google.cloud.firestore_v1 import Query
 
-PODCAST_DIR = "podcasts"
 
-BASE_URL = os.getenv(
-    "BASE_URL",
-    "https://wavely-backend-uet3.onrender.com"
+def get_podcast_history(uid):
+
+    podcast_ref = (
+        db.collection("users")
+        .document(uid)
+        .collection("podcasts")
+    )
+
+    docs = (
+        podcast_ref
+        .order_by(
+    "date",
+    direction=Query.DESCENDING,
 )
-
-
-def get_podcast_history():
-
-    os.makedirs(PODCAST_DIR, exist_ok=True)
-
-    files = []
-
-    for file in os.listdir(PODCAST_DIR):
-
-        if file.endswith("_final.mp3"):
-            files.append(file)
-
-        elif file.endswith(".mp3"):
-
-            date = file.replace(".mp3", "")
-            final_version = f"{date}_final.mp3"
-
-            # Add raw audio only if final version does not exist
-            if not os.path.exists(
-                os.path.join(PODCAST_DIR, final_version)
-            ):
-                files.append(file)
-
-    files.sort(reverse=True)
+        .stream()
+    )
 
     podcasts = []
 
-    for i, file in enumerate(files):
+    for doc in docs:
 
-        date = file.replace("_final.mp3", "")
-        date = date.replace(".mp3", "")
+        data = doc.to_dict()
+
+        # Only show successfully generated podcasts
+        if data.get("status") != "completed":
+            continue
 
         podcasts.append({
-            "podcast_id": str(i + 1),
-            "title": "Morning Brief",
-            "date": date,
-            "duration": 25,
-            "audio_url": f"{BASE_URL}/podcasts/{file}",
-            "categories": ["News"]
+            "podcast_id": data.get(
+                "podcast_id",
+                doc.id,
+            ),
+            "title": data.get(
+                "title",
+                "Morning Brief",
+            ),
+            "date": data.get(
+                "date",
+                "",
+            ),
+            "duration": data.get(
+                "duration",
+                20,
+            ),
+            "audio_url": data.get(
+                "audio_url",
+                "",
+            ),
+            "categories": data.get(
+                "categories",
+                [],
+            ),
+            "language": data.get(
+                "language",
+                "English",
+            ),
+            "voice": data.get(
+                "voice",
+                "Male",
+            ),
         })
 
     return podcasts
+
+
+def get_latest_podcast(uid):
+
+    podcasts = get_podcast_history(uid)
+
+    if not podcasts:
+        return None
+
+    return podcasts[0]
+
+
+def get_podcast_details(uid, date):
+
+    doc = (
+        db.collection("users")
+        .document(uid)
+        .collection("podcasts")
+        .document(date)
+        .get()
+    )
+
+    if not doc.exists:
+        return None
+
+    return doc.to_dict()

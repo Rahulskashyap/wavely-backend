@@ -1,142 +1,76 @@
-import sqlite3
+import json
+from firebase_service import db
 
-DB_NAME = "news_podcast.db"
+
+DEFAULT_PREFERENCES = {
+    "country": "India",
+    "state": "Karnataka",
+    "language": "English",
+    "voice": "Male",
+    "categories": ["Technology"],
+    "duration": 20,
+}
 
 
-def get_user_preferences(user_id):
+def get_user_preferences(uid):
 
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
+    doc_ref = (
+        db.collection("users")
+        .document(uid)
+        .collection("settings")
+        .document("preferences")
+    )
 
-    cursor.execute("""
-        SELECT country,
-               state,
-               language,
-               voice,
-               categories,
-               duration
-        FROM preferences
-        WHERE user_id = ?
-    """, (user_id,))
+    doc = doc_ref.get()
 
-    result = cursor.fetchone()
+    if not doc.exists:
+        print(f"No preferences found for {uid}. Creating defaults.")
 
-    # If this is a new user, create default preferences
-    if result is None:
+        doc_ref.set(DEFAULT_PREFERENCES)
 
-        print(f"No preferences found for user {user_id}. Creating defaults.")
+        return DEFAULT_PREFERENCES.copy()
 
-        cursor.execute("""
-            INSERT INTO preferences (
-                user_id,
-                country,
-                state,
-                language,
-                voice,
-                categories,
-                duration
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            user_id,
-            "India",
-            "Karnataka",
-            "English",
-            "Male",
-            '["Technology"]',
-            20
-        ))
+    preferences = doc.to_dict()
 
-        conn.commit()
+    print("Firestore Preferences:", preferences)
 
-        cursor.execute("""
-            SELECT country,
-                   state,
-                   language,
-                   voice,
-                   categories,
-                   duration
-            FROM preferences
-            WHERE user_id = ?
-        """, (user_id,))
-
-        result = cursor.fetchone()
-
-    print("Database Result:", result)
-
-    conn.close()
-
-    return result
+    return preferences
 
 
 def update_user_preferences(
-        user_id,
-        country,
-        state,
-        language,
-        voice,
-        categories,
-        duration
+    uid,
+    country,
+    state,
+    language,
+    voice,
+    categories,
+    duration,
 ):
 
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-
-    # Check whether preferences already exist
-    cursor.execute(
-        "SELECT id FROM preferences WHERE user_id = ?",
-        (user_id,)
+    doc_ref = (
+        db.collection("users")
+        .document(uid)
+        .collection("settings")
+        .document("preferences")
     )
 
-    existing = cursor.fetchone()
+    if isinstance(categories, str):
+        try:
+            categories = json.loads(categories)
+        except Exception:
+            categories = []
 
-    if existing:
+    data = {
+        "country": country,
+        "state": state,
+        "language": language,
+        "voice": voice,
+        "categories": categories,
+        "duration": duration,
+    }
 
-        cursor.execute("""
-            UPDATE preferences
-            SET country = ?,
-                state = ?,
-                language = ?,
-                voice = ?,
-                categories = ?,
-                duration = ?
-            WHERE user_id = ?
-        """, (
-            country,
-            state,
-            language,
-            voice,
-            categories,
-            duration,
-            user_id
-        ))
+    doc_ref.set(data, merge=True)
 
-        print("Preferences Updated!")
+    print(f"Preferences updated for user: {uid}")
 
-    else:
-
-        cursor.execute("""
-            INSERT INTO preferences (
-                user_id,
-                country,
-                state,
-                language,
-                voice,
-                categories,
-                duration
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            user_id,
-            country,
-            state,
-            language,
-            voice,
-            categories,
-            duration
-        ))
-
-        print("Preferences Created!")
-
-    conn.commit()
-    conn.close()
+    return data

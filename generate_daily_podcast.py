@@ -1,384 +1,719 @@
 import os
 import json
 import subprocess
-
-from datetime import datetime
+import imageio_ffmpeg
+from storage_service import upload_podcast_audio
+from datetime import datetime, timezone
 
 from news_service_v3 import get_all_news
 from gemini_service import generate_podcast_script
 from audio_service import generate_podcast_audio
 from preferences_service import get_user_preferences
 from highlights_service import generate_highlights
+from firebase_service import db
 
 
-# -----------------------------------
-# PODCAST DIRECTORY
-# -----------------------------------
+# ============================================================
+# CONFIGURATION
+# ============================================================
 
 PODCAST_DIR = "podcasts"
 
 os.makedirs(PODCAST_DIR, exist_ok=True)
 
 
-# -----------------------------------
-# GET USER PREFERENCES
-# -----------------------------------
+# ============================================================
+# GENERATE PODCAST FOR ONE FIREBASE USER
+# ============================================================
 
-prefs = get_user_preferences(1)
+def generate_podcast_for_user(uid):
 
-country = prefs[0]
-state = prefs[1]
-language = prefs[2]
-voice = prefs[3]
-news_mode = prefs[4]
-try:
-    selected_categories = json.loads(news_mode)
-except Exception:
-    selected_categories = []
-podcast_length = prefs[5]
+    print()
+    print("=" * 60)
+    print("GENERATING PODCAST")
+    print("USER:", uid)
+    print("=" * 60)
 
-print("Country :", country)
-print("State :", state)
-print("Language :", language)
-print("Voice :", voice)
-print("News Mode :", news_mode)
-print("Duration :", podcast_length)
+    # ========================================================
+    # GET USER PREFERENCES FROM FIRESTORE
+    # ========================================================
 
+    prefs = get_user_preferences(uid)
 
-# -----------------------------------
-# FILE NAMES
-# -----------------------------------
+    country = prefs.get(
+        "country",
+        "India",
+    )
 
-today = datetime.now().strftime("%Y-%m-%d")
+    state = prefs.get(
+        "state",
+        "Karnataka",
+    )
 
-script_file = "daily_script.txt"
+    language = prefs.get(
+        "language",
+        "English",
+    )
 
-raw_audio = os.path.join(
-    PODCAST_DIR,
-    f"{today}.mp3"
-)
+    voice = prefs.get(
+        "voice",
+        "Male",
+    )
 
-final_audio = os.path.join(
-    PODCAST_DIR,
-    f"{today}_final.mp3"
-)
+    selected_categories = prefs.get(
+        "categories",
+        ["Technology"],
+    )
 
-transcript_file = os.path.join(
-    PODCAST_DIR,
-    f"{today}.txt"
-)
+    podcast_length = prefs.get(
+        "duration",
+        20,
+    )
 
-highlights_file = os.path.join(
-    PODCAST_DIR,
-    "highlights.json"
-)
+    if not isinstance(selected_categories, list):
+        selected_categories = []
 
+    print()
+    print("USER PREFERENCES")
+    print("-------------------------")
+    print("Country:", country)
+    print("State:", state)
+    print("Language:", language)
+    print("Voice:", voice)
+    print("Categories:", selected_categories)
+    print("Duration:", podcast_length)
 
-# -----------------------------------
-# FETCH NEWS
-# -----------------------------------
+    # ========================================================
+    # CREATE UNIQUE USER PODCAST DIRECTORY
+    # ========================================================
 
-print("Fetching news...")
-print("Country =", country)
-print("State =", state)
+    user_podcast_dir = os.path.join(
+        PODCAST_DIR,
+        uid,
+    )
 
-news = get_all_news(
-    country,
-    state
-)
+    os.makedirs(
+        user_podcast_dir,
+        exist_ok=True,
+    )
 
+    # ========================================================
+    # FILE NAMES
+    # ========================================================
 
-# -----------------------------------
-# GENERATE SCRIPT
-# -----------------------------------
+    today = datetime.now().strftime(
+        "%Y-%m-%d"
+    )
 
-print("Generating script...")
+    raw_audio = os.path.join(
+        user_podcast_dir,
+        f"{today}.mp3",
+    )
 
-news_sections = []
+    final_audio = os.path.join(
+        user_podcast_dir,
+        f"{today}_final.mp3",
+    )
 
+    transcript_file = os.path.join(
+        user_podcast_dir,
+        f"{today}.txt",
+    )
 
-# -----------------------------------
-# KARNATAKA / STATE NEWS FIRST
-# -----------------------------------
+    highlights_file = os.path.join(
+        user_podcast_dir,
+        f"{today}_highlights.json",
+    )
 
-if "State" in selected_categories:
+    # ========================================================
+    # FIRESTORE PODCAST DOCUMENT
+    # ========================================================
 
-    news_sections.append(f"""
-KARNATAKA STATE NEWS - HIGHEST PRIORITY:
+    episode_ref = (
+        db
+        .collection("users")
+        .document(uid)
+        .collection("podcasts")
+        .document(today)
+    )
 
-{news['state']}
-""")
+    # ========================================================
+    # INITIAL GENERATION STATUS
+    # ========================================================
 
+    episode_ref.set(
+        {
+            "date": today,
+            "title": "Morning Brief",
+            "status": "starting",
+            "country": country,
+            "state": state,
+            "language": language,
+            "voice": voice,
+            "duration": podcast_length,
+            "categories": selected_categories,
+            "created_at": datetime.now(
+                timezone.utc
+            ),
+        },
+        merge=True,
+    )
 
-# -----------------------------------
-# INDIA NATIONAL NEWS
-# -----------------------------------
+    try:
 
-if "National" in selected_categories:
+        # ====================================================
+        # FETCH NEWS
+        # ====================================================
 
-    news_sections.append(f"""
-IMPORTANT INDIA NATIONAL NEWS:
+        print()
+        print("Fetching news...")
 
-{news['india']}
-""")
+        episode_ref.update(
+            {
+                "status": "fetching_news"
+            }
+        )
 
+        news = get_all_news(
+            country,
+            state,
+        )
 
-# -----------------------------------
-# BUSINESS AND ECONOMY
-# -----------------------------------
+        print("News fetched successfully.")
 
-if "Business" in selected_categories:
+        # ====================================================
+        # BUILD NEWS SECTIONS
+        # ====================================================
 
-    news_sections.append(f"""
+        news_sections = []
+
+        # ----------------------------------------------------
+        # STATE NEWS
+        # ----------------------------------------------------
+
+        if "State" in selected_categories:
+
+            news_sections.append(
+                f"""
+STATE NEWS FROM {state.upper()} - HIGHEST PRIORITY:
+
+{news.get("state", "")}
+"""
+            )
+
+        # ----------------------------------------------------
+        # NATIONAL NEWS
+        # ----------------------------------------------------
+
+        if "National" in selected_categories:
+
+            news_sections.append(
+                f"""
+IMPORTANT {country.upper()} NATIONAL NEWS:
+
+{news.get("india", "")}
+"""
+            )
+
+        # ----------------------------------------------------
+        # BUSINESS
+        # ----------------------------------------------------
+
+        if "Business" in selected_categories:
+
+            news_sections.append(
+                f"""
 INDIA BUSINESS AND ECONOMY NEWS:
 
-{news['economy']}
-""")
+{news.get("economy", "")}
+"""
+            )
 
+        # ----------------------------------------------------
+        # TECHNOLOGY
+        # ----------------------------------------------------
 
-# -----------------------------------
-# TECHNOLOGY
-# -----------------------------------
+        if "Technology" in selected_categories:
 
-if "Technology" in selected_categories:
-
-    news_sections.append(f"""
+            news_sections.append(
+                f"""
 INDIA TECHNOLOGY AND AI NEWS:
 
-{news['technology']}
-""")
+{news.get("technology", "")}
+"""
+            )
 
+        # ----------------------------------------------------
+        # SPORTS
+        # ----------------------------------------------------
 
-# -----------------------------------
-# SPORTS
-# -----------------------------------
+        if "Sports" in selected_categories:
 
-if "Sports" in selected_categories:
-
-    news_sections.append(f"""
+            news_sections.append(
+                f"""
 INDIA SPORTS NEWS:
 
 Give highest priority to cricket and major Indian sporting events.
 
-{news['sports']}
-""")
+{news.get("sports", "")}
+"""
+            )
 
+        # ----------------------------------------------------
+        # ENTERTAINMENT
+        # ----------------------------------------------------
 
-# -----------------------------------
-# ENTERTAINMENT
-# -----------------------------------
+        if "Entertainment" in selected_categories:
 
-if "Entertainment" in selected_categories:
-
-    news_sections.append(f"""
+            news_sections.append(
+                f"""
 INDIA ENTERTAINMENT NEWS:
 
-{news['entertainment']}
-""")
+{news.get("entertainment", "")}
+"""
+            )
 
+        # ----------------------------------------------------
+        # HEALTH
+        # ----------------------------------------------------
 
-# -----------------------------------
-# HEALTH
-# -----------------------------------
+        if "Health" in selected_categories:
 
-if "Health" in selected_categories:
+            health_news = news.get(
+                "health",
+                "",
+            )
 
-    health_news = news.get("health", "")
+            if health_news:
 
-    if health_news:
-
-        news_sections.append(f"""
+                news_sections.append(
+                    f"""
 IMPORTANT HEALTH NEWS:
 
 {health_news}
-""")
-
-
-# -----------------------------------
-# WORLD NEWS LAST
-# -----------------------------------
-
-if "World" in selected_categories:
-
-    news_sections.append(f"""
-IMPORTANT WORLD NEWS:
-
-Include only major international developments that are relevant or important.
-
-{news['world']}
-""")
-
-
-all_news = "\n\n".join(news_sections)
-if not all_news.strip():
-    all_news = f"""
-STATE NEWS:
-{news.get('state', '')}
-
-NATIONAL NEWS:
-{news.get('india', '')}
-
-IMPORTANT WORLD NEWS:
-{news.get('world', '')}
 """
+                )
 
-# -----------------------------------
-# GENERATE PODCAST SCRIPT
-# -----------------------------------
+        # ----------------------------------------------------
+        # WORLD NEWS
+        # ----------------------------------------------------
 
-print("Generating podcast script with Gemini...")
+        if "World" in selected_categories:
 
-script = generate_podcast_script(
-    all_news,
-    podcast_length
-)
+            news_sections.append(
+                f"""
+IMPORTANT WORLD NEWS:
 
-print("Podcast script generated.")
+Include only major international developments that are important or relevant.
 
+{news.get("world", "")}
+"""
+            )
 
-# -----------------------------------
-# GENERATE HIGHLIGHTS
-# -----------------------------------
+        # ====================================================
+        # FALLBACK IF NO CATEGORIES ARE SELECTED
+        # ====================================================
 
-print("Generating AI Highlights...")
+        if not news_sections:
 
-try:
+            print(
+                "No categories selected. "
+                "Using default State, National and World news."
+            )
 
-    highlights = generate_highlights(script)
+            news_sections.append(
+                f"""
+STATE NEWS FROM {state.upper()}:
 
-except Exception as e:
+{news.get("state", "")}
 
-    print(f"Highlights generation failed: {e}")
+IMPORTANT {country.upper()} NATIONAL NEWS:
 
-    highlights = []
+{news.get("india", "")}
 
+IMPORTANT WORLD NEWS:
 
-with open(
-    highlights_file,
-    "w",
-    encoding="utf-8"
-) as f:
+{news.get("world", "")}
+"""
+            )
 
-    json.dump(
-        {
-            "highlights": highlights
-        },
-        f,
-        ensure_ascii=False,
-        indent=4,
-    )
+        # ====================================================
+        # COMBINE NEWS
+        # ====================================================
 
+        all_news = "\n\n".join(
+            news_sections
+        )
 
-print("Highlights saved.")
+        # ====================================================
+        # GENERATE PODCAST SCRIPT
+        # ====================================================
 
+        print()
+        print("Generating podcast script...")
 
-# -----------------------------------
-# CLEAN SCRIPT
-# -----------------------------------
+        episode_ref.update(
+            {
+                "status": "generating_script"
+            }
+        )
 
-script = script.replace("[PAUSE]", "\n\n")
-script = script.replace('"[PAUSE]"', "")
-script = script.replace("PAUSE", "")
+        script = generate_podcast_script(
+            all_news,
+            podcast_length,
+            language,
+        )
 
-script = script.replace("*", "")
-script = script.replace("#", "")
-script = script.replace("•", "")
+        if not script or not script.strip():
 
+            raise RuntimeError(
+                "Gemini returned an empty podcast script."
+            )
 
-# -----------------------------------
-# SAVE SCRIPT
-# -----------------------------------
+        print("Podcast script generated.")
 
-with open(
-    script_file,
-    "w",
-    encoding="utf-8"
-) as f:
+        # ====================================================
+        # GENERATE AI HIGHLIGHTS
+        # ====================================================
 
-    f.write(script)
+        print()
+        print("Generating AI highlights...")
 
+        episode_ref.update(
+            {
+                "status": "generating_highlights"
+            }
+        )
 
-with open(
-    transcript_file,
-    "w",
-    encoding="utf-8"
-) as f:
+        try:
 
-    f.write(script)
+            highlights = generate_highlights(
+                script
+            )
 
+            if not isinstance(
+                highlights,
+                list,
+            ):
+                highlights = []
 
-print("Script saved")
+        except Exception as e:
 
+            print(
+                "Highlights generation failed:",
+                e,
+            )
 
-# -----------------------------------
-# GENERATE AUDIO
-# -----------------------------------
+            highlights = []
 
-print("Generating audio...")
+        # ====================================================
+        # SAVE HIGHLIGHTS
+        # ====================================================
 
+        with open(
+            highlights_file,
+            "w",
+            encoding="utf-8",
+        ) as file:
 
-generate_podcast_audio(
-    text=script,
-    language=language,
-    voice=voice,
-    output_file=raw_audio,
-)
+            json.dump(
+                {
+                    "highlights": highlights
+                },
+                file,
+                ensure_ascii=False,
+                indent=4,
+            )
 
+        print("Highlights saved.")
 
-print("Audio generated")
+        # ====================================================
+        # CLEAN SCRIPT FOR TTS
+        # ====================================================
 
+        clean_script = script
 
-# -----------------------------------
-# ADD INTRO / OUTRO
-# -----------------------------------
+        clean_script = clean_script.replace(
+            '"[PAUSE]"',
+            "",
+        )
 
-print("Adding intro/outro...")
+        clean_script = clean_script.replace(
+            "[PAUSE]",
+            "\n\n",
+        )
 
+        clean_script = clean_script.replace(
+            "PAUSE",
+            "",
+        )
 
-command = [
+        clean_script = clean_script.replace(
+            "*",
+            "",
+        )
 
-    "ffmpeg",
+        clean_script = clean_script.replace(
+            "#",
+            "",
+        )
 
-    "-i",
-    "assets/intro.mp3",
+        clean_script = clean_script.replace(
+            "•",
+            "",
+        )
 
-    "-i",
-    raw_audio,
+        # ====================================================
+        # SAVE TRANSCRIPT
+        # ====================================================
 
-    "-i",
-    "assets/intro.mp3",
+        with open(
+            transcript_file,
+            "w",
+            encoding="utf-8",
+        ) as file:
 
-    "-filter_complex",
-    "[0:a][1:a][2:a]concat=n=3:v=0:a=1[out]",
+            file.write(
+                clean_script
+            )
 
-    "-map",
-    "[out]",
+        print("Transcript saved.")
 
-    final_audio,
+        # ====================================================
+        # GENERATE AUDIO
+        # ====================================================
 
-    "-y"
-]
+        print()
+        print("Generating audio...")
+        print("Language:", language)
+        print("Voice:", voice)
 
+        episode_ref.update(
+            {
+                "status": "generating_audio"
+            }
+        )
 
-try:
+        generate_podcast_audio(
+            text=clean_script,
+            language=language,
+            voice=voice,
+            output_file=raw_audio,
+        )
 
-    subprocess.run(
-        command,
-        check=True
-    )
+        if not os.path.exists(
+            raw_audio
+        ):
 
-    print("Intro/outro added successfully.")
+            raise RuntimeError(
+                "Audio generation completed but MP3 file was not created."
+            )
 
-except Exception as e:
+        print("Raw audio generated.")
 
-    print(f"FFmpeg failed: {e}")
+        # ====================================================
+        # ADD INTRO AND OUTRO
+        # ====================================================
 
-    print("Using raw audio instead.")
+        print()
+        print("Adding intro and outro...")
 
-    final_audio = raw_audio
+        episode_ref.update(
+            {
+                "status": "adding_intro_outro"
+            }
+        )
 
+        ffmpeg_path = (
+            imageio_ffmpeg
+            .get_ffmpeg_exe()
+        )
 
-print()
-print("SUCCESS")
-print("Podcast saved at:")
-print(final_audio)
+        intro_file = os.path.join(
+            "assets",
+            "intro.mp3",
+        )
+
+        command = [
+            ffmpeg_path,
+
+            "-i",
+            intro_file,
+
+            "-i",
+            raw_audio,
+
+            "-i",
+            intro_file,
+
+            "-filter_complex",
+            "[0:a][1:a][2:a]concat=n=3:v=0:a=1[out]",
+
+            "-map",
+            "[out]",
+
+            final_audio,
+
+            "-y",
+        ]
+
+        try:
+
+            subprocess.run(
+                command,
+                check=True,
+            )
+
+            print(
+                "Intro/outro added successfully."
+            )
+
+        except Exception as ffmpeg_error:
+
+            print(
+                "FFmpeg failed:",
+                ffmpeg_error,
+            )
+
+            print(
+                "Using raw podcast audio."
+            )
+
+            final_audio = raw_audio
+
+        # ====================================================
+        # VERIFY FINAL FILE
+        # ====================================================
+
+        if not os.path.exists(
+            final_audio
+        ):
+
+            raise RuntimeError(
+                "Final podcast MP3 was not created."
+            )
+
+        # ====================================================
+        # BUILD AUDIO URL
+        # ====================================================
+
+        # ====================================================
+# UPLOAD FINAL AUDIO TO CLOUDINARY
+# ====================================================
+
+        # ====================================================
+        # UPLOAD FINAL AUDIO TO CLOUDINARY
+        # ====================================================
+
+        print()
+        print("Uploading final podcast to Cloudinary...")
+
+        episode_ref.update(
+            {
+                "status": "uploading"
+            }
+        )
+
+        upload_result = upload_podcast_audio(
+            file_path=final_audio,
+            uid=uid,
+            date=today,
+        )
+
+        audio_url = upload_result["audio_url"]
+        cloudinary_public_id = upload_result["public_id"]
+
+        print("Permanent audio URL:", audio_url)
+
+        # ====================================================
+        # SAVE PODCAST METADATA TO FIRESTORE
+        # ====================================================
+
+        episode_data = {
+            "podcast_id": today,
+            "title": "Morning Brief",
+            "date": today,
+            "status": "completed",
+            "country": country,
+            "state": state,
+            "language": language,
+            "voice": voice,
+            "duration": podcast_length,
+            "categories": selected_categories,
+            "cloudinary_public_id": cloudinary_public_id,
+            "audio_url": audio_url,
+            "transcript": clean_script,
+            "highlights": highlights,
+            "completed_at": datetime.now(
+                timezone.utc
+            ),
+        }
+
+        episode_ref.set(
+            episode_data,
+            merge=True,
+        )
+
+        # ====================================================
+        # CLEAN TEMPORARY LOCAL FILES
+        # ====================================================
+
+        temporary_files = [
+            raw_audio,
+            final_audio,
+            transcript_file,
+            highlights_file,
+        ]
+
+        for temporary_file in temporary_files:
+
+            try:
+
+                if os.path.exists(temporary_file):
+                    os.remove(temporary_file)
+
+            except Exception as cleanup_error:
+
+                print(
+                    "Temporary file cleanup failed:",
+                    cleanup_error,
+                )
+
+        # ====================================================
+        # SUCCESS
+        # ====================================================
+
+        print()
+        print("=" * 60)
+        print("PODCAST GENERATION SUCCESSFUL")
+        print("USER:", uid)
+        print("AUDIO URL:", audio_url)
+        print("=" * 60)
+
+        return episode_data
+
+    # ========================================================
+    # GENERATION FAILURE
+    # ========================================================
+
+    except Exception as e:
+
+        print()
+        print("=" * 60)
+        print("PODCAST GENERATION FAILED")
+        print("USER:", uid)
+        print("ERROR:", str(e))
+        print("=" * 60)
+
+        episode_ref.set(
+            {
+                "status": "failed",
+                "error": str(e),
+                "failed_at": datetime.now(
+                    timezone.utc
+                ),
+            },
+            merge=True,
+        )
+
+        raise

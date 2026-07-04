@@ -1,20 +1,30 @@
-from fastapi import FastAPI
-from history_service import get_podcast_history
+import os
+import json
+from generate_daily_podcast import generate_podcast_for_user
+from fastapi import FastAPI, Header, HTTPException
+from fastapi.staticfiles import StaticFiles
+
 from models import PreferenceUpdate
 from news_service import get_global_news
-from models import PreferenceUpdate, PodcastGenerateRequest
-from fastapi.staticfiles import StaticFiles
-import subprocess
-import json
-import sys
 from weather_service import get_weather
-import os
-import database
+
+from firebase_service import verify_firebase_token
 
 from preferences_service import (
     get_user_preferences,
-    update_user_preferences
+    update_user_preferences,
 )
+
+from history_service import (
+    get_podcast_history,
+    get_latest_podcast,
+    get_podcast_details,
+)
+
+
+# -----------------------------------
+# APP SETUP
+# -----------------------------------
 
 PODCAST_DIR = "podcasts"
 
@@ -25,136 +35,273 @@ app = FastAPI()
 app.mount(
     "/podcasts",
     StaticFiles(directory=PODCAST_DIR),
-    name="podcasts"
+    name="podcasts",
 )
 
-@app.post("/preferences/{user_id}")
-def update_preferences(
-    user_id: int,
-    prefs: PreferenceUpdate
+
+# -----------------------------------
+# FIREBASE AUTHENTICATION
+# -----------------------------------
+
+def get_current_user_uid(
+    authorization: str = Header(None)
 ):
 
-    update_user_preferences(
-        user_id,
+    if not authorization:
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header missing",
+        )
+
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authorization header",
+        )
+
+    token = authorization.replace(
+        "Bearer ",
+        "",
+        1,
+    )
+
+    try:
+        decoded_token = verify_firebase_token(token)
+
+        return decoded_token["uid"]
+
+    except Exception as e:
+
+        print("Firebase authentication error:", e)
+
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid Firebase token",
+        )
+
+
+# -----------------------------------
+# HOME
+# -----------------------------------
+
+@app.get("/")
+def home():
+
+    return {
+        "message": "Wavely Backend Running"
+    }
+
+
+# -----------------------------------
+# GET PREFERENCES
+# -----------------------------------
+
+@app.get("/preferences")
+def preferences(
+    authorization: str = Header(None)
+):
+
+    uid = get_current_user_uid(authorization)
+
+    prefs = get_user_preferences(uid)
+
+    return prefs
+
+
+# -----------------------------------
+# UPDATE PREFERENCES
+# -----------------------------------
+
+@app.post("/preferences")
+def update_preferences(
+    prefs: PreferenceUpdate,
+    authorization: str = Header(None),
+):
+
+    uid = get_current_user_uid(authorization)
+
+    updated_preferences = update_user_preferences(
+        uid,
         prefs.country,
         prefs.state,
         prefs.language,
         prefs.voice,
-        json.dumps(prefs.categories),
-        prefs.duration
-    )
-
-    return {
-        "message": "Preferences Updated"
-    }
-
-@app.get("/history")
-def history():
-
-    return {
-        "podcasts": get_podcast_history()
-    }
-
-@app.get("/api/podcasts/latest")
-def latest_podcast():
-    history = get_podcast_history()
-
-    if len(history) == 0:
-        return {}
-
-    return history[0]
-
-
-@app.get("/api/podcasts/list")
-def podcast_list():
-
-    history = get_podcast_history()
-
-    return history
-
-
-@app.post("/api/podcasts/generate")
-def generate_podcast(request: PodcastGenerateRequest):
-
-    subprocess.run(
-        [sys.executable, "generate_daily_podcast.py"],
-        check=True
+        prefs.categories,
+        prefs.duration,
     )
 
     return {
         "success": True,
-        "message": "Podcast generated successfully"
+        "message": "Preferences Updated",
+        "preferences": updated_preferences,
     }
 
-@app.get("/")
-def home():
-    return {
-        "message": "AI News Podcast Backend Running"
-    }
+@app.post("/api/podcasts/generate")
+def generate_podcast(
+    authorization: str = Header(None),
+):
 
+    uid = get_current_user_uid(
+        authorization
+    )
 
-@app.get("/news")
-def news():
-    return get_global_news()
+    try:
 
+        podcast = generate_podcast_for_user(
+            uid
+        )
 
-@app.get("/preferences/{user_id}")
-def preferences(user_id: int):
+        return {
+            "success": True,
+            "status": "completed",
+            "message": "Podcast generated successfully",
+            "podcast": podcast,
+        }
 
-    prefs = get_user_preferences(user_id)
+    except Exception as e:
 
-    return {
-        "country": prefs[0],
-        "state": prefs[1],
-        "language": prefs[2],
-        "voice": prefs[3],
-        "categories": json.loads(prefs[4]) if prefs[4] else [],
-        "duration": prefs[5]
-    }
+        print(
+            "Podcast generation error:",
+            e,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
+        )
+# -----------------------------------
+# WEATHER
+# -----------------------------------
 
 @app.get("/api/weather")
 def weather(city: str = "Bengaluru"):
+
     try:
+
         return get_weather(city)
-    except Exception as e:
-        return {
-            "error": str(e)
-        }
-    
-@app.get("/api/highlights")
-def get_highlights():
-    try:
-        with open(
-    os.path.join(PODCAST_DIR, "highlights.json"),
-    "r",
-    encoding="utf-8"
-) as f:
-            return json.load(f)
 
     except Exception as e:
+
+        print("Weather error:", e)
+
+        raise HTTPException(
+            status_code=500,
+            detail="Weather service failed",
+        )
+
+
+# -----------------------------------
+# NEWS
+# -----------------------------------
+
+@app.get("/news")
+def news():
+
+    return get_global_news()
+
+
+# -----------------------------------
+# PODCAST HISTORY
+# TEMPORARY LOCAL VERSION
+# -----------------------------------
+
+@app.get("/history")
+def history(
+    authorization: str = Header(None),
+):
+
+    uid = get_current_user_uid(authorization)
+
+    return {
+        "podcasts": get_podcast_history(uid)
+    }
+
+
+@app.get("/api/podcasts/latest")
+def latest_podcast(
+    authorization: str = Header(None),
+):
+
+    uid = get_current_user_uid(authorization)
+
+    podcast = get_latest_podcast(uid)
+
+    if podcast is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No podcast found",
+        )
+
+    return podcast
+
+
+@app.get("/api/podcasts/list")
+def podcast_list(
+    authorization: str = Header(None),
+):
+
+    uid = get_current_user_uid(authorization)
+
+    return get_podcast_history(uid)
+
+
+# -----------------------------------
+# HIGHLIGHTS
+# TEMPORARY LOCAL VERSION
+# -----------------------------------
+
+@app.get("/api/highlights")
+def get_highlights(
+    authorization: str = Header(None),
+):
+
+    uid = get_current_user_uid(authorization)
+
+    podcast = get_latest_podcast(uid)
+
+    if podcast is None:
         return {
-            "highlights": [],
-            "error": str(e)
+            "highlights": []
         }
+
+    details = get_podcast_details(
+        uid,
+        podcast["date"],
+    )
+
+    return {
+        "highlights": details.get(
+            "highlights",
+            [],
+        )
+    }
+
+# -----------------------------------
+# TRANSCRIPT
+# TEMPORARY LOCAL VERSION
+# -----------------------------------
 
 @app.get("/api/transcript/{date}")
-def transcript(date: str):
+def transcript(
+    date: str,
+    authorization: str = Header(None),
+):
 
-    try:
-        with open(
-           os.path.join(
-    PODCAST_DIR,
-    f"{date}.txt"
-),
-            "r",
-            encoding="utf-8"
-        ) as f:
+    uid = get_current_user_uid(authorization)
 
-            return {
-                "transcript": f.read()
-            }
+    details = get_podcast_details(
+        uid,
+        date,
+    )
 
-    except Exception:
+    if details is None:
         return {
             "transcript": ""
         }
+
+    return {
+        "transcript": details.get(
+            "transcript",
+            "",
+        )
+    }

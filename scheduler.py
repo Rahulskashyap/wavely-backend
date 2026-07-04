@@ -1,36 +1,70 @@
 import schedule
 import time
-import subprocess
-import sys
-import os
 from datetime import datetime
 
-print("Python Executable:")
-print(sys.executable)
+from firebase_service import db
+from generate_daily_podcast import generate_podcast_for_user
 
-def generate_daily_podcast():
-    schedule.every().day.at("05:30").do(generate_daily_podcast)
 
-print("Scheduler Started...")
-print("Waiting for 05:30 every day...")
+def generate_for_all_users():
+
+    print()
+    print("=" * 60)
+    print("STARTING AUTOMATIC DAILY GENERATION")
+    print("=" * 60)
+
+    users = db.collection("users").stream()
+
+    user_count = 0
+    success_count = 0
+    failed_count = 0
+
+    for user in users:
+
+        uid = user.id
+        user_count += 1
+
+        print()
+        print("Generating podcast for user:", uid)
+
+        try:
+
+            generate_podcast_for_user(uid)
+
+            success_count += 1
+
+        except Exception as e:
+
+            failed_count += 1
+
+            print(
+                "Generation failed for user:",
+                uid,
+                "Error:",
+                e,
+            )
+
+    print()
+    print("=" * 60)
+    print("DAILY GENERATION FINISHED")
+    print("Users:", user_count)
+    print("Successful:", success_count)
+    print("Failed:", failed_count)
+    print("=" * 60)
+
+
+# Generate every day at 5:30 AM
+schedule.every().day.at("05:30").do(
+    generate_for_all_users
+)
+
+
+print("Wavely Scheduler Started")
+print("Waiting for automatic generation...")
+
 
 while True:
-    print(f"[{datetime.now()}] Waiting...")
+
     schedule.run_pending()
+
     time.sleep(30)
-
-    print("\n==============================")
-    print("Starting Daily Podcast...")
-    print("==============================")
-
-    backend_path = os.path.dirname(os.path.abspath(__file__))
-
-    result = subprocess.run(
-        [sys.executable, "generate_daily_podcast.py"],
-        cwd=backend_path
-    )
-
-    if result.returncode == 0:
-        print("✅ Podcast Generated Successfully")
-    else:
-        print("❌ Podcast Generation Failed")
