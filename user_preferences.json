@@ -1,0 +1,36 @@
+{
+  "preferences": {
+    "country": "India",
+    "state": "Karnataka",
+    "language": "English",
+    "news_mode": "Hybrid",
+    "voice": "Female",
+    "podcast_length": 40
+  },
+
+  "supported_languages": [
+    "English",
+    "Hindi",
+    "Kannada",
+    "Tamil",
+    "Telugu",
+    "Malayalam",
+    "Marathi",
+    "Gujarati",
+    "Bengali",
+    "Punjabi",
+    "Odia",
+    "Urdu"
+  ],
+
+  "supported_modes": [
+    "National",
+    "Global",
+    "Hybrid"
+  ],
+
+  "supported_voices": [
+    "Female",
+    "Male"
+  ]
+}

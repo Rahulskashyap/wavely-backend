@@ -1,0 +1,13 @@
+import sqlite3
+
+conn = sqlite3.connect("news_podcast.db")
+cursor = conn.cursor()
+
+cursor.execute("SELECT * FROM preferences")
+
+rows = cursor.fetchall()
+
+for row in rows:
+    print(row)
+
+conn.close()
