@@ -17,7 +17,11 @@ venv/
 *.mp3
 
 # Generated scripts
-*.txt
+# Ignore generated text files only
+daily_script.txt
+podcast_script.txt
+india_first_podcast.txt
+india_first_podcast_v2.txt
 
 # Logs
 *.log
