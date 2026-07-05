@@ -12,7 +12,7 @@ from audio_service import generate_podcast_audio
 from preferences_service import get_user_preferences
 from highlights_service import generate_highlights
 from firebase_service import db
-
+from notification_service import send_podcast_ready_notification
 IST = ZoneInfo("Asia/Kolkata")
 # ============================================================
 # CONFIGURATION
@@ -718,10 +718,19 @@ IMPORTANT WORLD NEWS:
             "completed_at": datetime.now(IST),
         }
 
+
         episode_ref.set(
             episode_data,
             merge=True,
         )
+
+        # ====================================================
+        # SEND PODCAST READY PUSH NOTIFICATION
+        # ====================================================
+
+        print("Sending podcast ready notification...")
+
+        send_podcast_ready_notification(uid)
 
         # ====================================================
         # CLEAN TEMPORARY LOCAL FILES
@@ -735,14 +744,11 @@ IMPORTANT WORLD NEWS:
         ]
 
         for temporary_file in temporary_files:
-
             try:
-
                 if os.path.exists(temporary_file):
                     os.remove(temporary_file)
 
             except Exception as cleanup_error:
-
                 print(
                     "Temporary file cleanup failed:",
                     cleanup_error,
@@ -766,7 +772,6 @@ IMPORTANT WORLD NEWS:
     # ========================================================
 
     except Exception as e:
-
         print()
         print("=" * 60)
         print("PODCAST GENERATION FAILED")
