@@ -511,46 +511,66 @@ IMPORTANT WORLD NEWS:
 
         print("Raw audio generated.")
 
-        # ====================================================
-        # ADD INTRO AND OUTRO
+               # ====================================================
+        # ADD INTRO / OUTRO
         # ====================================================
 
-        print()
         print("Adding intro and outro...")
 
-        episode_ref.update(
-            {
-                "status": "adding_intro_outro"
-            }
-        )
+        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
 
-        ffmpeg_path = (
-            imageio_ffmpeg
-            .get_ffmpeg_exe()
-        )
-
-        intro_file = os.path.join(
+        intro_audio = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
             "assets",
             "intro.mp3",
         )
+
+        if not os.path.exists(intro_audio):
+            raise FileNotFoundError(
+                f"Intro audio not found: {intro_audio}"
+            )
 
         command = [
             ffmpeg_path,
 
             "-i",
-            intro_file,
+            intro_audio,
 
             "-i",
             raw_audio,
 
             "-i",
-            intro_file,
+            intro_audio,
 
             "-filter_complex",
-            "[0:a][1:a][2:a]concat=n=3:v=0:a=1[out]",
+            (
+                "[0:a]aresample=44100,"
+                "aformat=sample_fmts=fltp:"
+                "sample_rates=44100:"
+                "channel_layouts=stereo[intro];"
+
+                "[1:a]aresample=44100,"
+                "aformat=sample_fmts=fltp:"
+                "sample_rates=44100:"
+                "channel_layouts=stereo[podcast];"
+
+                "[2:a]aresample=44100,"
+                "aformat=sample_fmts=fltp:"
+                "sample_rates=44100:"
+                "channel_layouts=stereo[outro];"
+
+                "[intro][podcast][outro]"
+                "concat=n=3:v=0:a=1[out]"
+            ),
 
             "-map",
             "[out]",
+
+            "-codec:a",
+            "libmp3lame",
+
+            "-b:a",
+            "128k",
 
             final_audio,
 
@@ -558,41 +578,40 @@ IMPORTANT WORLD NEWS:
         ]
 
         try:
-
             subprocess.run(
                 command,
                 check=True,
             )
 
-            print(
-                "Intro/outro added successfully."
-            )
+            print("Intro/outro added successfully.")
+            print("Final podcast:", final_audio)
 
         except Exception as ffmpeg_error:
-
             print(
                 "FFmpeg failed:",
                 ffmpeg_error,
             )
 
-            print(
-                "Using raw podcast audio."
-            )
+            print("Using raw podcast audio.")
 
             final_audio = raw_audio
+
 
         # ====================================================
         # VERIFY FINAL FILE
         # ====================================================
 
-        if not os.path.exists(
-            final_audio
-        ):
+        if not os.path.exists(final_audio):
 
             raise RuntimeError(
                 "Final podcast MP3 was not created."
             )
 
+
+        print(
+            "Final podcast file verified:",
+            final_audio,
+        )
         # ====================================================
         # BUILD AUDIO URL
         # ====================================================
