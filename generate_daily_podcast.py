@@ -730,7 +730,15 @@ IMPORTANT WORLD NEWS:
 
         print("Sending podcast ready notification...")
 
-        send_podcast_ready_notification(uid)
+        try:
+            send_podcast_ready_notification(uid)
+
+        except Exception as notification_error:
+            print(
+                "Podcast generated successfully, "
+                "but notification failed:",
+                notification_error,
+            )
 
         # ====================================================
         # CLEAN TEMPORARY LOCAL FILES
