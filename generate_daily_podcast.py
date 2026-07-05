@@ -3,7 +3,8 @@ import json
 import subprocess
 import imageio_ffmpeg
 from storage_service import upload_podcast_audio
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from news_service_v3 import get_all_news
 from gemini_service import generate_podcast_script
@@ -12,7 +13,7 @@ from preferences_service import get_user_preferences
 from highlights_service import generate_highlights
 from firebase_service import db
 
-
+IST = ZoneInfo("Asia/Kolkata")
 # ============================================================
 # CONFIGURATION
 # ============================================================
@@ -101,9 +102,9 @@ def generate_podcast_for_user(uid):
     # FILE NAMES
     # ========================================================
 
-    today = datetime.now().strftime(
-        "%Y-%m-%d"
-    )
+    today = datetime.now(IST).strftime(
+    "%Y-%m-%d"
+)
 
     raw_audio = os.path.join(
         user_podcast_dir,
@@ -152,9 +153,7 @@ def generate_podcast_for_user(uid):
             "voice": voice,
             "duration": podcast_length,
             "categories": selected_categories,
-            "created_at": datetime.now(
-                timezone.utc
-            ),
+           "created_at": datetime.now(IST),
         },
         merge=True,
     )
@@ -612,9 +611,62 @@ IMPORTANT WORLD NEWS:
             "Final podcast file verified:",
             final_audio,
         )
+       
+
+                # ====================================================
+        # GET ACTUAL PODCAST DURATION
         # ====================================================
-        # BUILD AUDIO URL
-        # ====================================================
+
+        print("Calculating actual podcast duration...")
+
+        probe_command = [
+            ffmpeg_path,
+            "-i",
+            final_audio,
+        ]
+
+        probe_result = subprocess.run(
+            probe_command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        import re
+
+        duration_match = re.search(
+            r"Duration: (\d+):(\d+):(\d+\.\d+)",
+            probe_result.stderr,
+        )
+
+        if duration_match:
+
+            hours = int(duration_match.group(1))
+            minutes = int(duration_match.group(2))
+            seconds = float(duration_match.group(3))
+
+            actual_duration_seconds = int(
+                hours * 3600
+                + minutes * 60
+                + seconds
+            )
+
+        else:
+
+            print(
+                "Could not detect actual duration. "
+                "Using requested duration as fallback."
+            )
+
+            actual_duration_seconds = (
+                podcast_length * 60
+            )
+
+        print(
+            "Actual podcast duration:",
+            actual_duration_seconds,
+            "seconds",
+        )
 
         # ====================================================
 # UPLOAD FINAL AUDIO TO CLOUDINARY
@@ -657,15 +709,13 @@ IMPORTANT WORLD NEWS:
             "state": state,
             "language": language,
             "voice": voice,
-            "duration": podcast_length,
+             "duration": actual_duration_seconds,
             "categories": selected_categories,
             "cloudinary_public_id": cloudinary_public_id,
             "audio_url": audio_url,
             "transcript": clean_script,
             "highlights": highlights,
-            "completed_at": datetime.now(
-                timezone.utc
-            ),
+            "completed_at": datetime.now(IST),
         }
 
         episode_ref.set(
@@ -728,9 +778,7 @@ IMPORTANT WORLD NEWS:
             {
                 "status": "failed",
                 "error": str(e),
-                "failed_at": datetime.now(
-                    timezone.utc
-                ),
+                "failed_at": datetime.now(IST),
             },
             merge=True,
         )

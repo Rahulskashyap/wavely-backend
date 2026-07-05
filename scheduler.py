@@ -1,16 +1,17 @@
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from firebase_service import db
 from generate_daily_podcast import generate_podcast_for_user
 
-
+IST = ZoneInfo("Asia/Kolkata")
 def generate_for_all_users():
 
     print()
     print("=" * 60)
     print("WAVELY AUTOMATIC DAILY GENERATION")
-    print("Started at:", datetime.now(timezone.utc))
+    print("Started at:", datetime.now(IST))
     print("=" * 60)
 
     users = db.collection("users").stream()
@@ -31,10 +32,7 @@ def generate_for_all_users():
         print("USER:", uid)
         print("-" * 60)
 
-        today = datetime.now(
-            timezone.utc
-        ).strftime("%Y-%m-%d")
-
+        today = datetime.now(IST).strftime("%Y-%m-%d")
         episode_ref = (
             db.collection("users")
             .document(uid)
@@ -96,7 +94,7 @@ def generate_for_all_users():
     print("Successful:", success_count)
     print("Skipped:", skipped_count)
     print("Failed:", failed_count)
-    print("Finished at:", datetime.now(timezone.utc))
+    print("Finished at:", datetime.now(IST))
     print("=" * 60)
 
     return {
