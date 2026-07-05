@@ -18,6 +18,7 @@ def generate_for_all_users():
     user_count = 0
     success_count = 0
     failed_count = 0
+    skipped_count = 0
 
     for user in users:
 
@@ -26,13 +27,46 @@ def generate_for_all_users():
 
         print()
         print("-" * 60)
-        print("GENERATING PODCAST")
+        print("CHECKING USER")
         print("USER:", uid)
         print("-" * 60)
 
+        today = datetime.now(
+            timezone.utc
+        ).strftime("%Y-%m-%d")
+
+        episode_ref = (
+            db.collection("users")
+            .document(uid)
+            .collection("podcasts")
+            .document(today)
+        )
+
+        existing_episode = episode_ref.get()
+
+        if existing_episode.exists:
+
+            episode_data = existing_episode.to_dict()
+
+            if episode_data.get("status") == "completed":
+
+                skipped_count += 1
+
+                print(
+                    "SKIPPING USER:",
+                    uid,
+                    "- today's podcast already exists.",
+                )
+
+                continue
+
+        print()
+        print("GENERATING PODCAST")
+        print("USER:", uid)
+
         try:
 
-            result = generate_podcast_for_user(uid)
+            generate_podcast_for_user(uid)
 
             success_count += 1
 
@@ -60,6 +94,7 @@ def generate_for_all_users():
     print("DAILY GENERATION FINISHED")
     print("Total users:", user_count)
     print("Successful:", success_count)
+    print("Skipped:", skipped_count)
     print("Failed:", failed_count)
     print("Finished at:", datetime.now(timezone.utc))
     print("=" * 60)
@@ -67,9 +102,9 @@ def generate_for_all_users():
     return {
         "total_users": user_count,
         "successful": success_count,
+        "skipped": skipped_count,
         "failed": failed_count,
     }
-
 
 if __name__ == "__main__":
 
@@ -77,7 +112,6 @@ if __name__ == "__main__":
 
         result = generate_for_all_users()
 
-        # Exit successfully only if all users succeeded
         if result["failed"] == 0:
             sys.exit(0)
 
