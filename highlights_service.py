@@ -1,6 +1,15 @@
-import google.generativeai as genai
+import os
 
-model = genai.GenerativeModel("gemini-2.5-flash")
+from dotenv import load_dotenv
+from google import genai
+
+
+load_dotenv()
+
+
+client = genai.Client(
+    api_key=os.getenv("GEMINI_API_KEY")
+)
 
 
 def generate_highlights(news_text):
@@ -21,7 +30,10 @@ News:
 {news_text}
 """
 
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+    )
 
     highlights = []
 
@@ -29,6 +41,7 @@ News:
         line = line.strip()
 
         line = line.lstrip("-•* ").strip()
+
         if line:
             highlights.append(line)
 
