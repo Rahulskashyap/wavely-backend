@@ -2,7 +2,7 @@ from firebase_admin import messaging
 from firebase_service import db
 
 
-def send_podcast_ready_notification(uid):
+def send_podcast_ready_notification(uid, podcast_date):
 
     user_ref = db.collection("users").document(uid)
     user_data = user_ref.get()
@@ -24,6 +24,10 @@ def send_podcast_ready_notification(uid):
             title="🎙 Morning Brief Ready",
             body="Your personalized AI podcast is ready to play.",
         ),
+        data={
+            "type": "podcast_ready",
+            "podcast_date": str(podcast_date),
+        },
         token=fcm_token,
     )
 

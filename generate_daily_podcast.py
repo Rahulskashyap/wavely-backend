@@ -731,8 +731,10 @@ IMPORTANT WORLD NEWS:
         print("Sending podcast ready notification...")
 
         try:
-            send_podcast_ready_notification(uid)
-
+            send_podcast_ready_notification(
+    uid,
+    episode_data["date"],
+)
         except Exception as notification_error:
             print(
                 "Podcast generated successfully, "

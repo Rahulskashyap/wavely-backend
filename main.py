@@ -221,16 +221,22 @@ def history(
 def latest_podcast(
     authorization: str = Header(None),
 ):
-
     uid = get_current_user_uid(authorization)
 
     podcast = get_latest_podcast(uid)
 
     if podcast is None:
-        raise HTTPException(
-            status_code=404,
-            detail="No podcast found",
-        )
+        print(f"No podcast found for {uid}. Generating first podcast...")
+
+        try:
+            podcast = generate_podcast_for_user(uid)
+            return podcast
+
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate podcast: {str(e)}"
+            )
 
     return podcast
 
