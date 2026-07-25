@@ -2,6 +2,7 @@ import os
 import json
 from generate_daily_podcast import generate_podcast_for_user
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from models import PreferenceUpdate
@@ -31,6 +32,16 @@ PODCAST_DIR = "podcasts"
 os.makedirs(PODCAST_DIR, exist_ok=True)
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.mount(
     "/podcasts",
